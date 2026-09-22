@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.env
+
+# Pytest / Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Internal Agent & Planning docs (keep local only, do not commit to GitHub)
+.agent/
+AGENT.md
+RESEARCH.md
+ARCHITECTURE.md
+docs/
+
+
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
