@@ -9,6 +9,7 @@ from .transport import parse_tcp, parse_udp, parse_transport
 from .app_detector import detect_app_protocol
 from .http_parser import parse_http
 from .dns_parser import parse_dns
+from .smtp_parser import parse_smtp
 
 __all__ = [
     "parse_ipv4",
@@ -18,4 +19,5 @@ __all__ = [
     "detect_app_protocol",
     "parse_http",
     "parse_dns",
+    "parse_smtp",
 ]
