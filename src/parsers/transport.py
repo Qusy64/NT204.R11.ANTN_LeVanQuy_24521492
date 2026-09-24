@@ -161,7 +161,7 @@ def parse_udp(packet: Any, event: Optional[NormalizedEvent] = None) -> Optional[
 
 def parse_transport(
     packet: Any, event: Optional[NormalizedEvent] = None
-) -> Tuple[Optional[str], Optional[Union[TCPInfo, UDPInfo]]]:
+) -> Optional[Union[TCPInfo, UDPInfo]]:
     """
     Convenience orchestrator that dispatches a packet to either TCP or UDP parser.
     
@@ -170,16 +170,13 @@ def parse_transport(
         event: Optional NormalizedEvent to update in-place.
         
     Returns:
-        Tuple of (transport_type: "TCP" | "UDP" | None, transport_info: TCPInfo | UDPInfo | None)
+        TCPInfo or UDPInfo if packet contains a valid transport header, None otherwise.
     """
     if not hasattr(packet, "haslayer"):
-        return None, None
+        return None
 
     if packet.haslayer(TCP):
-        tcp_info = parse_tcp(packet, event)
-        return ("TCP", tcp_info) if tcp_info else (None, None)
+        return parse_tcp(packet, event)
     elif packet.haslayer(UDP):
-        udp_info = parse_udp(packet, event)
-        return ("UDP", udp_info) if udp_info else (None, None)
-    else:
-        return None, None
+        return parse_udp(packet, event)
+    return None
