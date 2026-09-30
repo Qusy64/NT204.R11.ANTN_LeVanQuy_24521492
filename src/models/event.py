@@ -62,11 +62,16 @@ class HTTPInfo:
     msg_type: str = "UNKNOWN"     # "REQUEST" | "RESPONSE"
     method: Optional[str] = None  # GET, POST, etc.
     uri: Optional[str] = None
+    raw_uri: Optional[str] = None
+    decoded_uri: Optional[str] = None
     version: Optional[str] = None # HTTP/1.1, HTTP/1.0
     status_code: Optional[int] = None
     reason_phrase: Optional[str] = None
     headers: Dict[str, str] = field(default_factory=dict)
     body: Optional[str] = None
+    decoded_body: Optional[str] = None
+    decoded_params: Dict[str, Any] = field(default_factory=dict)
+    decode_status: Optional[str] = None
     body_len: int = 0
 
 
@@ -90,6 +95,11 @@ class SMTPInfo:
     arguments: Optional[str] = None
     status_code: Optional[int] = None
     message: Optional[str] = None
+    headers: Dict[str, str] = field(default_factory=dict)
+    body: Optional[str] = None
+    decoded_body: Optional[str] = None
+    content_transfer_encoding: Optional[str] = None
+    decode_status: Optional[str] = None
 
 
 @dataclass
@@ -117,6 +127,10 @@ class NormalizedEvent:
     raw_payload_len: int = 0
     is_malformed: bool = False
     errors: List[str] = field(default_factory=list)
+
+    # Decoder & Preprocessor Enriched Fields
+    decoded_payload: Optional[str] = None
+    decode_status: Optional[str] = None
 
     def __post_init__(self):
         if not self.timestamp_iso and self.timestamp:
