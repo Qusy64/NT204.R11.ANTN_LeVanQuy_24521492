@@ -131,6 +131,10 @@ class NormalizedEvent:
     # Decoder & Preprocessor Enriched Fields
     decoded_payload: Optional[str] = None
     decode_status: Optional[str] = None
+    validation_status: str = "valid"       # "valid" | "partial" | "invalid"
+    preprocess_status: str = "valid"       # "valid" | "partial" | "invalid"
+    processing_action: str = "FORWARD"     # "FORWARD" | "DROP" | "INSPECT"
+    reason: Optional[str] = None
 
     def __post_init__(self):
         if not self.timestamp_iso and self.timestamp:
