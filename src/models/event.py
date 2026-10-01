@@ -136,6 +136,11 @@ class NormalizedEvent:
     processing_action: str = "FORWARD"     # "FORWARD" | "DROP" | "INSPECT"
     reason: Optional[str] = None
 
+    # Flow Tracker Enriched Fields (Mục 5)
+    flow_id: Optional[str] = None
+    flow_direction: Optional[str] = None   # "FORWARD" | "BACKWARD"
+    flow_state: Optional[str] = None
+
     def __post_init__(self):
         if not self.timestamp_iso and self.timestamp:
             dt = datetime.fromtimestamp(self.timestamp, tz=timezone.utc)
