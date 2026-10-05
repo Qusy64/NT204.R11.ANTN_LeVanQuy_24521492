@@ -41,17 +41,23 @@ class JsonLinesLogger:
         if self.file_handle is None or self.file_handle.closed:
             self.file_handle = open(self.filepath, mode=self.mode, encoding="utf-8")
 
-    def log_event(self, event: NormalizedEvent) -> None:
+    def log_event(self, event: Any) -> None:
         """
-        Serializes a single NormalizedEvent and writes it as one JSON line.
+        Serializes a single NormalizedEvent, FlowRecord, or dict and writes it as one JSON line.
 
         Args:
-            event: Fully populated NormalizedEvent dataclass.
+            event: Fully populated NormalizedEvent, FlowRecord, or dictionary.
         """
         if self.file_handle is None or self.file_handle.closed:
             self._open()
 
-        data_dict = event.to_dict()
+        if hasattr(event, "to_dict"):
+            data_dict = event.to_dict()
+        elif isinstance(event, dict):
+            data_dict = event
+        else:
+            data_dict = {"raw": str(event)}
+
         line = json.dumps(data_dict, ensure_ascii=False)
         self.file_handle.write(line + "\n")
         self.file_handle.flush()

@@ -1,9 +1,11 @@
 """
-IDS/IPS Packet Ingestion & Parsing CLI Entrypoint.
-Compliant with Assignment 1 specifications:
+IDS/IPS Packet Ingestion, Preprocessing & Flow Tracking CLI Entrypoint.
+Compliant with Assignment 1 & 2 specifications:
 - Accepts PCAP file input (--pcap) or Live Network Interface (--interface / -i).
-- Dissects packets layer-by-layer into NormalizedEvent via ParsingPipeline.
-- Exports results to JSON Lines format (.jsonl) via JsonLinesLogger.
+- Executes 5-stage pipeline: Parser -> Decoder -> Preprocessor -> Flow Tracker.
+- Exports enriched events to JSON Lines format (--output).
+- Optionally exports bidirectional flow records and metrics (--output-flows).
+- Configurable idle timeouts and invalid packet policies (Mục 2).
 """
 
 import sys
@@ -20,7 +22,7 @@ from src.logger import JsonLinesLogger
 def parse_arguments() -> argparse.Namespace:
     """Parses and validates command line arguments."""
     parser = argparse.ArgumentParser(
-        description="IDS/IPS Packet Capture and Normalization Parser (Assignment 1)"
+        description="IDS/IPS Packet Capture, Decoder, Preprocessor & Flow Tracker (Assignment 2)"
     )
 
     input_group = parser.add_mutually_exclusive_group(required=True)
@@ -39,7 +41,30 @@ def parse_arguments() -> argparse.Namespace:
         "--output",
         type=str,
         default="output.jsonl",
-        help="Destination path for JSON Lines output file (default: output.jsonl)"
+        help="Destination path for enriched event JSON Lines output (default: output.jsonl)"
+    )
+    parser.add_argument(
+        "--output-flows",
+        type=str,
+        default=None,
+        help="Optional destination path for bidirectional Flow records JSON Lines output (.jsonl)"
+    )
+    parser.add_argument(
+        "--tcp-timeout",
+        type=float,
+        default=300.0,
+        help="Idle timeout in seconds for TCP flows (default: 300.0)"
+    )
+    parser.add_argument(
+        "--udp-timeout",
+        type=float,
+        default=60.0,
+        help="Idle timeout in seconds for UDP flows (default: 60.0)"
+    )
+    parser.add_argument(
+        "--drop-invalid",
+        action="store_true",
+        help="Policy flag: tag invalid packets with action DROP instead of INSPECT"
     )
 
     return parser.parse_args()
@@ -63,9 +88,16 @@ def main() -> int:
         source = LiveCapture(interface=args.interface)
         print(f"[*] Mode: Live Capture -> Interface: {args.interface or 'Default'}")
 
-    print(f"[*] Output destination: {args.output}")
+    print(f"[*] Enriched Events output : {args.output}")
+    if args.output_flows:
+        print(f"[*] Flow Records output    : {args.output_flows}")
 
-    pipeline = ParsingPipeline()
+    pipeline = ParsingPipeline(
+        tcp_idle_timeout=args.tcp_timeout,
+        udp_idle_timeout=args.udp_timeout,
+        drop_invalid=args.drop_invalid
+    )
+
     total_packets = 0
     malformed_count = 0
     start_time = time.time()
@@ -78,6 +110,15 @@ def main() -> int:
                 if event.is_malformed:
                     malformed_count += 1
 
+        # Export Flow Records if requested or by default at end of pipeline
+        all_flows = pipeline.flush_flows()
+        total_flows = len(all_flows)
+
+        if args.output_flows:
+            with JsonLinesLogger(filepath=args.output_flows) as flow_logger:
+                for flow in all_flows:
+                    flow_logger.log_event(flow)
+
     except KeyboardInterrupt:
         print("\n[!] Capture interrupted by user (Ctrl+C). Finalizing logs...")
     except Exception as exc:
@@ -88,13 +129,16 @@ def main() -> int:
     rate = (total_packets / elapsed) if elapsed > 0 else 0.0
 
     print("=" * 60)
-    print("           IDS/IPS INGESTION & PARSING SUMMARY")
+    print("      IDS/IPS PIPELINE & FLOW TRACKER SUMMARY")
     print("=" * 60)
     print(f" Total Packets Processed : {total_packets}")
+    print(f" Total Flows Tracked     : {total_flows}")
     print(f" Malformed Packets       : {malformed_count}")
     print(f" Execution Elapsed Time  : {elapsed:.3f} seconds")
     print(f" Throughput              : {rate:.1f} packets/sec")
-    print(f" Log File Written        : {os.path.abspath(args.output)}")
+    print(f" Events Log Written      : {os.path.abspath(args.output)}")
+    if args.output_flows:
+        print(f" Flows Log Written       : {os.path.abspath(args.output_flows)}")
     print("=" * 60)
 
     return 0
