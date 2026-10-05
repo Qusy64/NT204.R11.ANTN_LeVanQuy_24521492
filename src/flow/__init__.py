@@ -6,6 +6,7 @@ UDP tracking, timeout eviction, and flow statistics.
 
 from .model import FlowRecord, FlowStatistics, get_canonical_5tuple
 from .tcp_tracker import TCPConnectionTracker, TCPState
+from .tracker import FlowTracker
 
 __all__ = [
     "FlowRecord",
@@ -13,4 +14,5 @@ __all__ = [
     "get_canonical_5tuple",
     "TCPConnectionTracker",
     "TCPState",
+    "FlowTracker",
 ]
