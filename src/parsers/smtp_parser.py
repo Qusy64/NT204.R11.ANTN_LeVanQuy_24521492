@@ -135,12 +135,77 @@ def parse_smtp(packet: Any, event: Optional[NormalizedEvent] = None) -> Optional
         cmd_candidate = tokens[0].upper()
         if cmd_candidate in SMTP_STANDARD_COMMANDS:
             arguments = tokens[1].strip() if len(tokens) > 1 else None
+            headers = {}
+            body = None
+            content_transfer_encoding = None
+
+            # If command is DATA and there is content following
+            if cmd_candidate == "DATA" and len(lines) > 1:
+                # Payload contains DATA command and subsequent message stream
+                data_content = text.split("\n", 1)[1].lstrip("\r\n")
+                if "\r\n\r\n" in data_content:
+                    header_part, body_part = data_content.split("\r\n\r\n", 1)
+                elif "\n\n" in data_content:
+                    header_part, body_part = data_content.split("\n\n", 1)
+                else:
+                    header_part = data_content
+                    body_part = ""
+
+                for hline in header_part.splitlines():
+                    if ":" in hline:
+                        hk, hv = hline.split(":", 1)
+                        headers[hk.strip()] = hv.strip()
+                        if hk.strip().lower() == "content-transfer-encoding":
+                            content_transfer_encoding = hv.strip()
+
+                body = body_part.strip() if body_part else None
+                if not body and not headers:
+                    body = data_content.strip()
+
             smtp_info = SMTPInfo(
                 msg_type="COMMAND",
                 command=cmd_candidate,
                 arguments=arguments if arguments else None,
                 status_code=None,
                 message=None,
+                headers=headers,
+                body=body,
+                content_transfer_encoding=content_transfer_encoding,
+            )
+            if event is not None:
+                event.app_protocol = "SMTP"
+                event.application = smtp_info
+            return smtp_info
+
+        # 4. Check for standalone email message body/headers (SMTP DATA stream)
+        if any(h in first_line_upper for h in ("CONTENT-TRANSFER-ENCODING", "FROM:", "TO:", "SUBJECT:", "MIME-VERSION")):
+            headers = {}
+            content_transfer_encoding = None
+            if "\r\n\r\n" in text:
+                header_part, body_part = text.split("\r\n\r\n", 1)
+            elif "\n\n" in text:
+                header_part, body_part = text.split("\n\n", 1)
+            else:
+                header_part = text
+                body_part = ""
+
+            for hline in header_part.splitlines():
+                if ":" in hline:
+                    hk, hv = hline.split(":", 1)
+                    headers[hk.strip()] = hv.strip()
+                    if hk.strip().lower() == "content-transfer-encoding":
+                        content_transfer_encoding = hv.strip()
+
+            body = body_part.strip() if body_part else None
+            smtp_info = SMTPInfo(
+                msg_type="DATA",
+                command=None,
+                arguments=None,
+                status_code=None,
+                message=None,
+                headers=headers,
+                body=body,
+                content_transfer_encoding=content_transfer_encoding,
             )
             if event is not None:
                 event.app_protocol = "SMTP"
