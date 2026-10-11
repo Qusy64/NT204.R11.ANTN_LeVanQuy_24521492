@@ -112,6 +112,11 @@ class FlowTracker:
             # Determine initial state
             initial_state = "NEW/HANDSHAKE" if protocol == "TCP" else "ACTIVE"
 
+            # Extract TCP flags if available
+            tcp_flags = None
+            if event.transport and hasattr(event.transport, "flags"):
+                tcp_flags = event.transport.flags
+
             flow = FlowRecord.create(
                 src_ip=src_ip,
                 dst_ip=dst_ip,
@@ -121,7 +126,8 @@ class FlowTracker:
                 timestamp=ts,
                 byte_count=byte_len,
                 app_protocol=event.app_protocol or "UNKNOWN",
-                state=initial_state
+                state=initial_state,
+                flags=tcp_flags
             )
             self.active_flows[flow_id] = flow
             direction = "FORWARD"

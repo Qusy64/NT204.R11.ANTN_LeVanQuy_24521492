@@ -95,12 +95,18 @@ class FlowRecord:
         timestamp: float,
         byte_count: int,
         app_protocol: str = "UNKNOWN",
-        state: str = "NEW/HANDSHAKE"
+        state: str = "NEW/HANDSHAKE",
+        flags: Optional[Dict[str, bool]] = None
     ) -> "FlowRecord":
         """Factory method initializing a new bidirectional flow record."""
         flow_id, _, _ = get_canonical_5tuple(src_ip, dst_ip, src_port, dst_port, protocol)
         ts = float(timestamp) if timestamp is not None else 0.0
         proto_clean = str(protocol).strip().upper() if protocol else "UNKNOWN"
+
+        syn_cnt = 1 if flags and flags.get("SYN") else 0
+        ack_cnt = 1 if flags and flags.get("ACK") else 0
+        fin_cnt = 1 if flags and flags.get("FIN") else 0
+        rst_cnt = 1 if flags and flags.get("RST") else 0
 
         record = cls(
             flow_id=flow_id,
@@ -118,7 +124,11 @@ class FlowRecord:
                 forward_packet_count=1,
                 backward_packet_count=0,
                 forward_byte_count=int(byte_count),
-                backward_byte_count=0
+                backward_byte_count=0,
+                syn_count=syn_cnt,
+                ack_count=ack_cnt,
+                fin_count=fin_cnt,
+                rst_count=rst_cnt,
             )
         )
         return record
