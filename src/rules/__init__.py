@@ -13,6 +13,7 @@ from .loader import (
 )
 from .indexer import RuleIndexer
 from .repository import RuleRepository
+from .matcher import RuleMatchingEngine
 
 __all__ = [
     "SnortRule",
@@ -25,4 +26,5 @@ __all__ = [
     "load_rules_from_directory",
     "RuleIndexer",
     "RuleRepository",
+    "RuleMatchingEngine",
 ]
