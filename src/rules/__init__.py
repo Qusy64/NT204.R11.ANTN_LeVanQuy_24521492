@@ -11,6 +11,8 @@ from .loader import (
     load_rules_from_string,
     load_rules_from_directory
 )
+from .indexer import RuleIndexer
+from .repository import RuleRepository
 
 __all__ = [
     "SnortRule",
@@ -21,4 +23,6 @@ __all__ = [
     "load_rules_from_file",
     "load_rules_from_string",
     "load_rules_from_directory",
+    "RuleIndexer",
+    "RuleRepository",
 ]
