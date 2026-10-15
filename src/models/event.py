@@ -141,6 +141,9 @@ class NormalizedEvent:
     flow_direction: Optional[str] = None   # "FORWARD" | "BACKWARD"
     flow_state: Optional[str] = None
 
+    # Core Detection Engine Enriched Fields (Bài tập 3 - Mục 5)
+    alerts: List[Any] = field(default_factory=list)
+
     def __post_init__(self):
         if not self.timestamp_iso and self.timestamp:
             dt = datetime.fromtimestamp(self.timestamp, tz=timezone.utc)

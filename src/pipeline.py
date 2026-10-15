@@ -20,6 +20,8 @@ from src.parsers.smtp_parser import parse_smtp
 from src.decoders import DecoderEngine
 from src.preprocessor import PreprocessorEngine
 from src.flow import FlowTracker, FlowRecord
+from src.rules.engine import RuleEvaluationEngine
+from src.rules.generator import DetectionEvent
 
 
 class ParsingPipeline:
@@ -33,12 +35,14 @@ class ParsingPipeline:
         tcp_idle_timeout: float = 300.0,
         udp_idle_timeout: float = 60.0,
         drop_invalid: bool = False,
+        rule_engine: Optional[RuleEvaluationEngine] = None,
     ):
         """
         Args:
             tcp_idle_timeout: Inactivity seconds before a TCP flow expires.
             udp_idle_timeout: Inactivity seconds before a UDP flow expires.
             drop_invalid: Policy flag; if True, invalid events are tagged action 'DROP'.
+            rule_engine: Core IDS Rule Evaluation Engine instance (Assignment 3).
         """
         self.decoder = DecoderEngine()
         self.preprocessor = PreprocessorEngine(drop_invalid=drop_invalid)
@@ -46,7 +50,9 @@ class ParsingPipeline:
             tcp_idle_timeout=tcp_idle_timeout,
             udp_idle_timeout=udp_idle_timeout
         )
+        self.rule_engine = rule_engine
         self.expired_flows: List[FlowRecord] = []
+        self.alerts: List[DetectionEvent] = []
 
     def process_packet(
         self,
@@ -136,6 +142,13 @@ class ParsingPipeline:
             if expired:
                 self.expired_flows.extend(expired)
 
+            # Stage 5: Core Rule Evaluation Engine (Bài tập 3 - Mục 1, 2, 5)
+            if self.rule_engine is not None:
+                detected = self.rule_engine.evaluate_event(event)
+                event.alerts = detected
+                if detected:
+                    self.alerts.extend(detected)
+
         except Exception as exc:
             event.errors.append(f"Post-processing pipeline error: {str(exc)}")
 
@@ -165,6 +178,14 @@ class ParsingPipeline:
         all_flows = self.expired_flows + remaining
         self.expired_flows = []
         return all_flows
+
+    def flush_alerts(self) -> List[DetectionEvent]:
+        """
+        Returns all collected detection events and resets the pipeline alerts buffer.
+        """
+        ret = list(self.alerts)
+        self.alerts = []
+        return ret
 
 
 # Default singleton instance and convenience module-level function
