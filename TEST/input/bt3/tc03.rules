@@ -1,0 +1,24 @@
+# ==============================================================================
+# Test Case 03: Rule dung keyword ngoai pham vi (Muc 7.3)
+# Mon hoc: He thong tim kiem, phat hien va ngan ngua xam nhap - NT204.R11.ANTN
+# Sinh vien: Le Van Quy - MSSV: 24521492
+# Ky vong: Danh dau unsupported, khong crash, engine van load rule hop le khac.
+# ==============================================================================
+
+# Rule 1 (Unsupported): Chua PCRE regular expression (ngoai pham vi de bai)
+alert tcp any any -> any 80 (msg:"PCRE Regex Attack"; pcre:"/select.*from/i"; sid:300031; rev:1;)
+
+# Rule 2 (Unsupported): Chua byte_test (ngoai pham vi de bai)
+alert udp any any -> any 53 (msg:"DNS Byte Test Check"; byte_test:4,>,1000,0; sid:300032; rev:1;)
+
+# Rule 3 (Unsupported): Chua byte_jump (ngoai pham vi de bai)
+alert tcp any any -> any 21 (msg:"FTP Byte Jump Check"; byte_jump:4,0,relative; sid:300033; rev:1;)
+
+# Rule 4 (Unsupported): Chua TLS inspection / tls_sni (ngoai pham vi de bai)
+alert tcp any any -> any 443 (msg:"TLS SNI Inspection"; tls_sni:"evil.com"; sid:300034; rev:1;)
+
+# Rule 5 (Unsupported): Chua threshold rate limiting (ngoai pham vi de bai)
+alert tcp any any -> any 22 (msg:"SSH Brute Force Limit"; threshold:type both, track by_src, count 5, seconds 60; sid:300035; rev:1;)
+
+# Rule 6 (Valid): Rule hop le de chung minh engine van nap va kich hoat binh thuong
+alert tcp 10.0.0.0/8 any -> 192.168.1.1 80 (msg:"Normal Web Traffic Monitored"; content:"GET"; nocase; sid:300036; rev:1;)
