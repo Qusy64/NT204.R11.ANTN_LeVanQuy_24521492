@@ -1,20 +1,19 @@
 """
-IDS/IPS Packet Ingestion, Preprocessing, Flow Tracking & Core Engine CLI Entrypoint.
-Compliant with Assignment 1, 2 & 3 specifications:
-- Accepts PCAP file input (--pcap) or Live Network Interface (--interface / -i).
-- Executes 5-stage pipeline: Parser -> Decoder -> Preprocessor -> Flow Tracker -> Core Engine.
-- Supports Snort rule loading from file or directory (--rules / -r).
-- Exports enriched events to JSON Lines format (--output).
-- Optionally exports bidirectional flow records (--output-flows).
-- Exports standardized detection alerts to JSON Lines format (--alerts).
-- Configurable idle timeouts and invalid packet policies.
+IDS/IPS Packet Ingestion, Preprocessing, Flow Tracking & Core Snort Engine CLI Entrypoint.
+Compliant with Assignment 1, 2 & 3 specifications and Snort CLI conventions:
+- Snort Test Mode (-T / --test-rules [rule_path]): Validate and report on rule syntax then exit.
+- Rule Deployment (--rules / -r / -R): Load rules from file or directory into Core Engine.
+- Granular Rule Selection (--enable-sids / --disable-sids): Enable/disable specific rule SIDs.
+- Packet Replay (--pcap / -p) or Live Sniffing (--interface / -i).
+- 5-stage pipeline: Parser -> Decoder -> Preprocessor -> Flow Tracker -> Core Engine.
+- Export enriched events (--output), flow records (--output-flows), and alerts (--alerts).
 """
 
 import sys
 import os
 import time
 import argparse
-from typing import Optional
+from typing import Optional, Set
 
 from src.capture import PcapCapture, LiveCapture, BasePacketSource
 from src.pipeline import ParsingPipeline
@@ -28,55 +27,86 @@ def parse_arguments() -> argparse.Namespace:
         description="IDS/IPS Packet Capture, Decoder, Preprocessor, Flow Tracker & Core Snort Engine (Assignment 3)"
     )
 
-    input_group = parser.add_mutually_exclusive_group(required=True)
+    # Traffic Input Source (Snort style: -p / --pcap, -i / --interface)
+    input_group = parser.add_argument_group("Traffic Input Options")
     input_group.add_argument(
-        "--pcap",
+        "--pcap", "-p",
         type=str,
+        default=None,
         help="Path to an offline PCAP capture file to parse"
     )
     input_group.add_argument(
-        "--interface",
+        "--interface", "-i",
         type=str,
+        default=None,
         help="Network interface name for live packet capture (e.g., eth0, Wi-Fi)"
     )
 
-    parser.add_argument(
-        "--rules", "-r",
+    # Snort Rule Options (Snort style: -r / -R / --rules, -T / --test-rules)
+    rule_group = parser.add_argument_group("Snort Rule Options")
+    rule_group.add_argument(
+        "-T", "--test-rules",
+        nargs="?",
+        const=True,
+        default=None,
+        metavar="RULE_PATH",
+        help="Snort test mode: validate rules then exit. Can pass path directly: -T <path_to_rules>"
+    )
+    rule_group.add_argument(
+        "--rules", "-r", "-R",
         type=str,
         default=None,
         help="Path to Snort rules file (.rules) or directory containing rule files"
     )
-    parser.add_argument(
+    rule_group.add_argument(
+        "--enable-sids",
+        type=str,
+        default=None,
+        help="Comma-separated list of rule SIDs to specifically enable (e.g., 300001,300002)"
+    )
+    rule_group.add_argument(
+        "--disable-sids",
+        type=str,
+        default=None,
+        help="Comma-separated list of rule SIDs to disable (e.g., 300003)"
+    )
+
+    # Output & Logging Options
+    out_group = parser.add_argument_group("Output & Logging Options")
+    out_group.add_argument(
         "--alerts",
         type=str,
         default=None,
         help="Destination path for Detection Events (Alerts) JSON Lines output (.jsonl)"
     )
-    parser.add_argument(
+    out_group.add_argument(
         "--output",
         type=str,
         default="output.jsonl",
         help="Destination path for enriched event JSON Lines output (default: output.jsonl)"
     )
-    parser.add_argument(
+    out_group.add_argument(
         "--output-flows",
         type=str,
         default=None,
         help="Optional destination path for bidirectional Flow records JSON Lines output (.jsonl)"
     )
-    parser.add_argument(
+
+    # Pipeline Policy Options
+    policy_group = parser.add_argument_group("Pipeline Policy Options")
+    policy_group.add_argument(
         "--tcp-timeout",
         type=float,
         default=300.0,
         help="Idle timeout in seconds for TCP flows (default: 300.0)"
     )
-    parser.add_argument(
+    policy_group.add_argument(
         "--udp-timeout",
         type=float,
         default=60.0,
         help="Idle timeout in seconds for UDP flows (default: 60.0)"
     )
-    parser.add_argument(
+    policy_group.add_argument(
         "--drop-invalid",
         action="store_true",
         help="Policy flag: tag invalid packets with action DROP instead of INSPECT"
@@ -85,16 +115,102 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def run_rule_validation_mode(repo: RuleRepository, rules_path: str) -> int:
+    """
+    Executes Snort-style rule validation test (-T) and prints a comprehensive report.
+    """
+    print("=" * 70)
+    print("        SNORT RULES VALIDATION & VERIFICATION REPORT (-T)")
+    print("=" * 70)
+    print(f" Rules Source Path       : {os.path.abspath(rules_path)}")
+    print(f" Total Rules Loaded      : {repo.total_rules}")
+    print(f"  -> Valid Rules         : {repo.valid_count}")
+    print(f"  -> Invalid Rules       : {repo.invalid_count}")
+    print(f"  -> Unsupported Rules   : {repo.unsupported_count}")
+    print("-" * 70)
+
+    # 1. Invalid Rules Breakdown
+    if repo.invalid_rules:
+        print(" [!] INVALID RULES (Syntax errors / missing fields):")
+        for idx, rule in enumerate(repo.invalid_rules, start=1):
+            sid_str = f"SID={rule.sid}" if rule.sid else "NO_SID"
+            print(f"     #{idx:02d} [{sid_str}] Reason: {rule.reason}")
+            print(f"         Raw: {rule.raw_text}")
+        print("-" * 70)
+
+    # 2. Unsupported Rules Breakdown
+    if repo.unsupported_rules:
+        print(" [?] UNSUPPORTED RULES (Keywords out of scope):")
+        for idx, rule in enumerate(repo.unsupported_rules, start=1):
+            sid_str = f"SID={rule.sid}" if rule.sid else "NO_SID"
+            print(f"     #{idx:02d} [{sid_str}] Reason: {rule.reason}")
+            print(f"         Raw: {rule.raw_text}")
+        print("-" * 70)
+
+    # 3. Valid Rules Ready for Deployment
+    if repo.valid_rules:
+        print(" [+] VALID RULES READY FOR DEPLOYMENT:")
+        for sid, rule in repo.valid_rules.items():
+            proto = rule.header.protocol if rule.header else "UNKNOWN"
+            direction = rule.header.direction if rule.header else "->"
+            src_str = f"{rule.header.src_ip}:{rule.header.src_port}" if rule.header else "any"
+            dst_str = f"{rule.header.dst_ip}:{rule.header.dst_port}" if rule.header else "any"
+            msg = f'"{rule.msg}"' if rule.msg else "None"
+            print(f"     [SID {sid:6d}] {rule.header.action} {proto} {src_str} {direction} {dst_str} | msg:{msg}")
+        print("-" * 70)
+
+    if repo.invalid_rules:
+        print("[WARNING] Invalid rules detected and quarantined. Engine remains fully functional.")
+    else:
+        print("[SUCCESS] All rules parsed and verified with 100% valid syntax!")
+    print("=" * 70)
+    return 0
+
+
 def main() -> int:
     """Main execution orchestrator."""
     args = parse_arguments()
 
-    # Validate PCAP existence if provided
+    # Parse enabled/disabled SIDs if provided (Mục 4.1)
+    enabled_sids: Optional[Set[int]] = None
+    if args.enable_sids:
+        enabled_sids = {int(s.strip()) for s in args.enable_sids.split(",") if s.strip().isdigit()}
+
+    disabled_sids: Optional[Set[int]] = None
+    if args.disable_sids:
+        disabled_sids = {int(s.strip()) for s in args.disable_sids.split(",") if s.strip().isdigit()}
+
+    # 1. Handle Snort Test Mode (-T / --test-rules [path])
+    if args.test_rules:
+        rules_path = args.test_rules if isinstance(args.test_rules, str) else args.rules
+        if not rules_path:
+            sys.stderr.write("[ERROR] Vui lòng chỉ định đường dẫn file rule: python main.py -T <path_to_rules>\n")
+            return 1
+        if not os.path.exists(rules_path):
+            sys.stderr.write(f"[ERROR] Rules path not found: {rules_path}\n")
+            return 1
+
+        repo = RuleRepository()
+        if os.path.isdir(rules_path):
+            repo.load_from_directory(rules_path, enabled_sids=enabled_sids, disabled_sids=disabled_sids)
+        else:
+            repo.load_from_file(rules_path, enabled_sids=enabled_sids, disabled_sids=disabled_sids)
+
+        return run_rule_validation_mode(repo, rules_path)
+
+    # 2. Check Traffic Input Source for Deployment Mode
+    if not args.pcap and not args.interface:
+        sys.stderr.write(
+            "[ERROR] No traffic input specified. Provide --pcap <file> or --interface <name>, "
+            "or use -T <path_to_rules> to test rule syntax.\n"
+        )
+        return 1
+
     if args.pcap and not os.path.exists(args.pcap):
         sys.stderr.write(f"[ERROR] PCAP file not found: {args.pcap}\n")
         return 1
 
-    # Validate and load Snort rules if provided
+    # 3. Load Snort Rules for Deployment
     rule_engine: Optional[RuleEvaluationEngine] = None
     repo: Optional[RuleRepository] = None
 
@@ -105,9 +221,9 @@ def main() -> int:
 
         repo = RuleRepository()
         if os.path.isdir(args.rules):
-            repo.load_from_directory(args.rules)
+            repo.load_from_directory(args.rules, enabled_sids=enabled_sids, disabled_sids=disabled_sids)
         else:
-            repo.load_from_file(args.rules)
+            repo.load_from_file(args.rules, enabled_sids=enabled_sids, disabled_sids=disabled_sids)
 
         rule_engine = RuleEvaluationEngine(repository=repo)
         if not args.alerts:
@@ -123,7 +239,7 @@ def main() -> int:
         print(f"[*] Mode: Live Capture -> Interface: {args.interface or 'Default'}")
 
     if args.rules and repo:
-        print(f"[*] Rules Source           : {args.rules}")
+        print(f"[*] Rules Deployed Source  : {args.rules}")
         print(f"    -> Valid: {repo.valid_count} | Invalid: {repo.invalid_count} | Unsupported: {repo.unsupported_count}")
 
     print(f"[*] Enriched Events output : {args.output}")
@@ -177,9 +293,9 @@ def main() -> int:
     elapsed = time.time() - start_time
     rate = (total_packets / elapsed) if elapsed > 0 else 0.0
 
-    print("=" * 60)
+    print("=" * 70)
     print("      IDS/IPS PIPELINE & CORE DETECTION ENGINE SUMMARY")
-    print("=" * 60)
+    print("=" * 70)
     print(f" Total Packets Processed : {total_packets}")
     print(f" Total Flows Tracked     : {total_flows}")
     print(f" Malformed Packets       : {malformed_count}")
@@ -195,7 +311,7 @@ def main() -> int:
         print(f" Flows Log Written       : {os.path.abspath(args.output_flows)}")
     if args.alerts:
         print(f" Alerts Log Written      : {os.path.abspath(args.alerts)}")
-    print("=" * 60)
+    print("=" * 70)
 
     return 0
 

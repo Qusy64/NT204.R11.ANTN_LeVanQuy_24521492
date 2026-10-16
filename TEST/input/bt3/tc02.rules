@@ -1,0 +1,27 @@
+# ==============================================================================
+# Test Case 02: Rule sai cu phap (Muc 7.2)
+# Mon hoc: He thong tim kiem, phat hien va ngan ngua xam nhap - NT204.R11.ANTN
+# Sinh vien: Le Van Quy - MSSV: 24521492
+# Ky vong: Danh dau invalid, co ly do ro rang, engine van tiep tuc chay khong crash.
+# ==============================================================================
+
+# Rule 1 (Invalid): Thieu SID bat buoc
+alert tcp any any -> any 80 (msg:"Missing SID option";)
+
+# Rule 2 (Invalid): Thieu thong diep msg bat buoc
+alert tcp any any -> any 443 (sid:300012; rev:1;)
+
+# Rule 3 (Invalid): IP nguon khong hop le (999.999.999.999)
+alert tcp 999.999.999.999 any -> any 80 (msg:"Invalid Source IP"; sid:300013; rev:1;)
+
+# Rule 4 (Invalid): Port nguon vuot nguong 65535 (port 99999)
+alert tcp any 99999 -> any 80 (msg:"Invalid Port Range"; sid:300014; rev:1;)
+
+# Rule 5 (Invalid): Chieu huong sai cu phap (<- thay vi -> hoac <>)
+alert tcp any any <- any 80 (msg:"Invalid Direction Operator"; sid:300015; rev:1;)
+
+# Rule 6 (Invalid): nocase dung truoc khi co content
+alert tcp any any -> any 80 (msg:"Nocase without content"; nocase; sid:300016; rev:1;)
+
+# Rule 7 (Valid): Rule hop le nam sau cac rule loi de chung minh engine tiep tuc chay binh thuong
+alert tcp 192.168.1.0/24 any -> 10.0.0.1 80 (msg:"Valid Rule Still Parsed"; content:"GET"; sid:300017; rev:1;)
