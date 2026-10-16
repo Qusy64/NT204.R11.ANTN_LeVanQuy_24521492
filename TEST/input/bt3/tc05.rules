@@ -1,0 +1,12 @@
+# ==============================================================================
+# Test Case 05: Direction -> va <> (Muc 7.5)
+# Mon hoc: He thong tim kiem, phat hien va ngan ngua xam nhap - NT204.R11.ANTN
+# Sinh vien: Le Van Quy - MSSV: 24521492
+# Ky vong: So khop dung chieu. Rule -> chi bat chieu thuan, rule <> bat ca 2 chieu.
+# ==============================================================================
+
+# Rule 1 (Unidirectional ->): Chi bat chieu thuan tu 192.168.1.100 sang 10.0.0.1:80
+alert tcp 192.168.1.100 any -> 10.0.0.1 80 (msg:"TC05 Unidirectional Forward Traffic"; content:"PING"; sid:300051; rev:1;)
+
+# Rule 2 (Bidirectional <>): Bat ca 2 chieu giua 192.168.1.100 va 10.0.0.1:80
+alert tcp 192.168.1.100 any <> 10.0.0.1 80 (msg:"TC05 Bidirectional Traffic"; content:"PONG"; sid:300052; rev:1;)

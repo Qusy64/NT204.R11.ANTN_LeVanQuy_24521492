@@ -71,9 +71,11 @@ def parse_tcp(packet: Any, event: Optional[NormalizedEvent] = None) -> Optional[
         flags_dict, flag_summary = extract_tcp_flags(tcp.flags)
 
         payload_len = 0
+        raw_payload_bytes = b""
         if hasattr(tcp, "payload") and tcp.payload:
             try:
-                payload_len = len(tcp.payload)
+                raw_payload_bytes = bytes(tcp.payload)
+                payload_len = len(raw_payload_bytes)
             except Exception:
                 payload_len = 0
 
@@ -95,6 +97,8 @@ def parse_tcp(packet: Any, event: Optional[NormalizedEvent] = None) -> Optional[
             event.transport = tcp_info
             if payload_len > 0:
                 event.raw_payload_len = payload_len
+                if not event.decoded_payload:
+                    event.decoded_payload = raw_payload_bytes.decode("latin-1", errors="replace")
 
         return tcp_info
 
@@ -123,9 +127,11 @@ def parse_udp(packet: Any, event: Optional[NormalizedEvent] = None) -> Optional[
         udp = packet[UDP]
 
         payload_len = 0
+        raw_payload_bytes = b""
         if hasattr(udp, "payload") and udp.payload:
             try:
-                payload_len = len(udp.payload)
+                raw_payload_bytes = bytes(udp.payload)
+                payload_len = len(raw_payload_bytes)
             except Exception:
                 payload_len = 0
 
@@ -149,6 +155,8 @@ def parse_udp(packet: Any, event: Optional[NormalizedEvent] = None) -> Optional[
             event.transport = udp_info
             if payload_len > 0:
                 event.raw_payload_len = payload_len
+                if not event.decoded_payload:
+                    event.decoded_payload = raw_payload_bytes.decode("latin-1", errors="replace")
 
         return udp_info
 
