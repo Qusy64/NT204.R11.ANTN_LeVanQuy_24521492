@@ -1,0 +1,7 @@
+# TC07 - Header mismatch must reject a rule before content matching.
+# Input: TEST/input/bt3/tc07.pcap contains two TCP packets with identical payload.
+# Packet 1: source 192.168.1.100 satisfies the header (comparison packet).
+# Packet 2: source 192.168.1.101 fails the header, despite identical content.
+# Both packets use destination 10.0.0.1:80 and remain candidates for this rule.
+
+alert tcp 192.168.1.100 any -> 10.0.0.1 80 (msg:"TC07 Header check before content"; content:"GET /tc07"; sid:300071; rev:1;)
