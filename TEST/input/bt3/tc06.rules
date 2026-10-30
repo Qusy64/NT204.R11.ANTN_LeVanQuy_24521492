@@ -1,0 +1,18 @@
+# TC06 - Repository/Indexer: TCP/UDP rules with IPv4/CIDR/any and port ranges.
+# Traffic input: TEST/input/bt3/tc06.pcap, 12 TCP/UDP packets.
+# All packet IPs satisfy the single-IP/CIDR restrictions below.
+# Run the existing system pipeline; do not add header-rejection scenarios here.
+
+alert tcp any any -> any 80 (msg:"TC06 TCP HTTP port"; sid:300061; rev:1;)
+alert tcp any any -> any 443 (msg:"TC06 TCP HTTPS port"; sid:300062; rev:1;)
+alert udp any any -> any 53 (msg:"TC06 UDP DNS port"; sid:300063; rev:1;)
+
+alert tcp any any -> any any (msg:"TC06 TCP any port"; sid:300064; rev:1;)
+alert udp any any -> any any (msg:"TC06 UDP any port"; sid:300065; rev:1;)
+
+# Closed range: both 8000 and 8080 are included.
+alert tcp any any -> any 8000:8080 (msg:"TC06 TCP destination port range"; sid:300066; rev:1;)
+
+# These headers include CIDR and single IPs; this index selects by protocol/port.
+alert tcp 192.168.1.0/24 any -> 10.0.0.1 80 (msg:"TC06 CIDR source and single destination IP"; sid:300067; rev:1;)
+alert tcp 192.168.1.100 any -> 10.0.0.1 8080 (msg:"TC06 Single IP and overlapping port"; sid:300068; rev:1;)
