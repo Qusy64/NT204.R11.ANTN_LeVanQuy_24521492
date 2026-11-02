@@ -1,0 +1,9 @@
+# TC12 - Compare TCP flags and payload size against the normalized event.
+# Input: tc12.pcap contains four TCP packets with the same endpoints.
+# Packet 1: PSH/ACK, ABCDEFGHIJ (10 bytes); SID 300121 expected.
+# Packet 2: ACK,     ABCDEFGHIJ (10 bytes); no alert: missing PSH.
+# Packet 3: PSH/ACK, ABCDEFGHI  (9 bytes);  no alert: wrong dsize.
+# Packet 4: PSH/ACK, ABCDEFGHIJK (11 bytes); no alert: wrong dsize.
+# Scope: required flags present/missing and exact dsize; no extra-flags case.
+
+alert tcp 192.168.1.100 any -> 10.0.0.1 9000 (msg:"TC12 TCP flags and payload size"; flags:PA; dsize:10; sid:300121; rev:1;)
