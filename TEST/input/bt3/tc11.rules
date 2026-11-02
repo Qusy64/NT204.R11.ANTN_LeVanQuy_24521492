@@ -1,0 +1,10 @@
+# TC11 - Match the second content relative to the end of the first content.
+# distance:2 skips at least 2 bytes after BEGIN before searching for END.
+# within:6 requires the entire END to fit in 6 bytes after BEGIN.
+# Input: tc11.pcap contains four TCP packets with the same endpoints.
+# Packet 1: BEGINxxENDxxx; gap 2; SID 300111 expected.
+# Packet 2: BEGINxENDxxxx; gap 1; no alert expected.
+# Packet 3: AABEGINxxxEND; gap 3 with shifted BEGIN; SID 300111 expected.
+# Packet 4: BEGINxxxxENDx; gap 4; END exceeds within; no alert expected.
+
+alert tcp 192.168.1.100 any -> 10.0.0.1 9000 (msg:"TC11 Relative content matching"; content:"BEGIN"; content:"END"; distance:2; within:6; sid:300111; rev:1;)
