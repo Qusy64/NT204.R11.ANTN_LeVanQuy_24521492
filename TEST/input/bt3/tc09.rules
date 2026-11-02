@@ -1,0 +1,10 @@
+# TC09 - Compare content matching with and without nocase.
+# Input: tc09.pcap contains three TCP packets with the same endpoints.
+# Packet 1: GET /TC09-Marker -> SIDs 300091 and 300092 expected.
+# Packet 2: GET /tc09-marker -> only SID 300092 expected.
+# Packet 3: GET /TC09-Other  -> no alert expected.
+# nocase applies to the preceding content option in the second rule.
+
+alert tcp 192.168.1.100 any -> 10.0.0.1 80 (msg:"TC09 Case sensitive content"; content:"TC09-Marker"; sid:300091; rev:1;)
+
+alert tcp 192.168.1.100 any -> 10.0.0.1 80 (msg:"TC09 Case insensitive content"; content:"TC09-Marker"; nocase; sid:300092; rev:1;)
