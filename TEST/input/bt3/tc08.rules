@@ -1,0 +1,10 @@
+# TC08 - Match flow:to_server,established using Flow Tracker context.
+# Input: tc08.pcap contains one TCP connection, starting with a client SYN.
+# Bidirectional header lets both directions reach the flow checks.
+# Packet 1: client SYN; connection is not established; no match expected.
+# Packet 2: server SYN/ACK; no match expected.
+# Packet 3: client ACK completes handshake; SID 300081 expected.
+# Packet 4: client sends data on established connection; SID 300081 expected.
+# Packet 5: server sends data on established connection; no match expected.
+
+alert tcp 192.168.1.100 41008 <> 10.0.0.1 80 (msg:"TC08 To server established"; flow:to_server,established; sid:300081; rev:1;)
