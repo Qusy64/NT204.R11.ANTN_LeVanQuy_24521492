@@ -1,0 +1,8 @@
+# TC13 - One event must produce every matching rule result.
+# Input: tc13.pcap contains one TCP packet with payload TC13-ALPHA TC13-BETA.
+# Both rules have matching headers and each finds its own content marker.
+# Expected: the same event contains alerts for SIDs 300131 and 300132.
+
+alert tcp 192.168.1.100 any -> 10.0.0.1 9000 (msg:"TC13 Alpha marker"; content:"TC13-ALPHA"; sid:300131; rev:1;)
+
+alert tcp 192.168.1.100 any -> 10.0.0.1 9000 (msg:"TC13 Beta marker"; content:"TC13-BETA"; sid:300132; rev:1;)
