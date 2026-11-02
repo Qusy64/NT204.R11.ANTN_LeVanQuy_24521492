@@ -1,0 +1,9 @@
+# TC10 - Content must fit entirely inside the offset/depth search window.
+# Byte positions are zero-based. offset:4; depth:6 searches bytes 4 through 9.
+# Input: tc10.pcap contains four TCP packets with the same endpoints.
+# Packet 1: AAAATC10AAAAAA; TC10 at bytes 4-7; SID 300101 expected.
+# Packet 2: AAATC10AAAAAAA; TC10 at bytes 3-6; no alert expected.
+# Packet 3: AAAAAATC10AAAA; TC10 at bytes 6-9; SID 300101 expected.
+# Packet 4: AAAAAAATC10AAA; TC10 at bytes 7-10; no alert expected.
+
+alert tcp 192.168.1.100 any -> 10.0.0.1 9000 (msg:"TC10 Content within offset and depth"; content:"TC10"; offset:4; depth:6; sid:300101; rev:1;)
