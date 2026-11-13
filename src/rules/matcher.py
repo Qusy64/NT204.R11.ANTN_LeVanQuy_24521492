@@ -106,55 +106,97 @@ def _match_dsize(payload_len: int, dsize_spec: str) -> bool:
     return False
 
 
-def _extract_payload_bytes(event: NormalizedEvent) -> bytes:
+def _extract_payload_buffers(event: NormalizedEvent) -> List[Tuple[str, bytes]]:
+    """Collect payload and application fields as independent search buffers.
+
+    Keep the transport payload first to preserve existing byte offsets. Application
+    fields remain searchable even when that payload is present. Never concatenate
+    representations: a content chain must match entirely inside one buffer.
     """
-    Extracts contiguous searchable payload bytes from NormalizedEvent and application data.
-    """
-    # 1. Direct decoded_payload or raw_payload if present
-    if event.decoded_payload:
-        return event.decoded_payload.encode("latin-1", errors="replace")
+    buffers: List[Tuple[str, bytes]] = []
+    seen: set[bytes] = set()
 
-    # 2. HTTP Application Layer Data
-    if isinstance(event.application, HTTPInfo):
-        parts = []
-        if event.application.uri:
-            parts.append(event.application.uri)
-        if event.application.decoded_uri and event.application.decoded_uri != event.application.uri:
-            parts.append(event.application.decoded_uri)
-        if event.application.body:
-            parts.append(event.application.body)
-        if event.application.decoded_body and event.application.decoded_body != event.application.body:
-            parts.append(event.application.decoded_body)
-        if parts:
-            return " \r\n ".join(parts).encode("latin-1", errors="replace")
+    def add_buffer(name: str, text: Optional[str]) -> None:
+        if not isinstance(text, str) or not text:
+            return
+        # Preserve the byte encoding already used by content patterns and payloads.
+        data = text.encode("latin-1", errors="replace")
+        if data not in seen:
+            seen.add(data)
+            buffers.append((name, data))
 
-    # 3. DNS Application Layer Data
-    elif isinstance(event.application, DNSInfo):
-        dns_parts = []
-        for q in event.application.queries:
-            if isinstance(q, dict) and "domain" in q:
-                dns_parts.append(q["domain"])
-        for a in event.application.answers:
-            if isinstance(a, dict) and "domain" in a:
-                dns_parts.append(a["domain"])
-        if dns_parts:
-            return " ".join(dns_parts).encode("latin-1", errors="replace")
+    add_buffer("payload", event.decoded_payload)
 
-    # 4. SMTP Application Layer Data
-    elif isinstance(event.application, SMTPInfo):
-        smtp_parts = []
-        if event.application.command:
-            smtp_parts.append(event.application.command)
-        if event.application.arguments:
-            smtp_parts.append(event.application.arguments)
-        if event.application.body:
-            smtp_parts.append(event.application.body)
-        if event.application.decoded_body:
-            smtp_parts.append(event.application.decoded_body)
-        if smtp_parts:
-            return " \r\n ".join(smtp_parts).encode("latin-1", errors="replace")
+    application = event.application
+    if isinstance(application, HTTPInfo):
+        add_buffer("http.uri", application.uri)
+        add_buffer("http.decoded_uri", application.decoded_uri)
+        add_buffer("http.body", application.body)
+        add_buffer("http.decoded_body", application.decoded_body)
+    elif isinstance(application, DNSInfo):
+        for query in application.queries or []:
+            if isinstance(query, dict):
+                add_buffer("dns.query.domain", query.get("domain"))
+        for answer in application.answers or []:
+            if isinstance(answer, dict):
+                add_buffer("dns.answer.domain", answer.get("domain"))
+    elif isinstance(application, SMTPInfo):
+        add_buffer("smtp.command", application.command)
+        add_buffer("smtp.arguments", application.arguments)
+        add_buffer("smtp.body", application.body)
+        add_buffer("smtp.decoded_body", application.decoded_body)
 
-    return b""
+    return buffers
+
+
+def _match_content_patterns(
+    contents: List[ContentPattern], search_buf: bytes
+) -> Optional[List[str]]:
+    """Match the whole content chain in one buffer, with buffer-local offsets."""
+    matched_details: List[str] = []
+    last_match_end = 0
+
+    for i, cp in enumerate(contents):
+        target = search_buf
+        pattern_bytes = cp.pattern
+
+        if cp.nocase:
+            target = target.lower()
+            pattern_bytes = pattern_bytes.lower()
+
+        buf_len = len(target)
+
+        # Absolute offset or distance from the previous match in this buffer.
+        if i == 0 or cp.distance is None:
+            start_pos = cp.offset if cp.offset is not None else 0
+        else:
+            start_pos = last_match_end + cp.distance
+
+        if i == 0 or cp.within is None:
+            if cp.depth is not None:
+                end_pos = (cp.offset or 0) + cp.depth
+            else:
+                end_pos = buf_len
+        else:
+            end_pos = last_match_end + cp.within
+
+        start_pos = max(0, start_pos)
+        end_pos = min(buf_len, end_pos)
+
+        if start_pos > buf_len or start_pos >= end_pos:
+            return None
+
+        found_idx = target.find(pattern_bytes, start_pos, end_pos)
+        if found_idx == -1:
+            return None
+
+        if cp.within is not None and (found_idx + len(pattern_bytes)) > (last_match_end + cp.within):
+            return None
+
+        last_match_end = found_idx + len(pattern_bytes)
+        matched_details.append(f"content='{cp.raw_pattern}' at byte {found_idx}")
+
+    return matched_details
 
 
 class RuleMatchingEngine:
@@ -265,55 +307,15 @@ class RuleMatchingEngine:
         # -------------------------------------------------------------
         matched_details: List[str] = []
         if rule.contents:
-            search_buf = _extract_payload_bytes(event)
-            last_match_end = 0
-
-            for i, cp in enumerate(rule.contents):
-                target = search_buf
-                pattern_bytes = cp.pattern
-
-                if cp.nocase:
-                    target = target.lower()
-                    pattern_bytes = pattern_bytes.lower()
-
-                buf_len = len(target)
-
-                # Determine start boundary
-                if i == 0 or cp.distance is None:
-                    # Absolute offset
-                    start_pos = cp.offset if cp.offset is not None else 0
-                else:
-                    # Relative distance from previous match
-                    start_pos = last_match_end + cp.distance
-
-                # Determine end boundary
-                if i == 0 or cp.within is None:
-                    if cp.depth is not None:
-                        end_pos = (cp.offset or 0) + cp.depth
-                    else:
-                        end_pos = buf_len
-                else:
-                    # Relative within from previous match end
-                    end_pos = last_match_end + cp.within
-
-                # Boundary clamping
-                start_pos = max(0, start_pos)
-                end_pos = min(buf_len, end_pos)
-
-                if start_pos > buf_len or start_pos >= end_pos:
-                    return False, None
-
-                # Search substring
-                found_idx = target.find(pattern_bytes, start_pos, end_pos)
-                if found_idx == -1:
-                    return False, None
-
-                # If 'within' was specified, ensure the entire pattern fits within window
-                if cp.within is not None and (found_idx + len(pattern_bytes)) > (last_match_end + cp.within):
-                    return False, None
-
-                last_match_end = found_idx + len(pattern_bytes)
-                matched_details.append(f"content='{cp.raw_pattern}' at byte {found_idx}")
+            for buffer_name, search_buf in _extract_payload_buffers(event):
+                details = _match_content_patterns(rule.contents, search_buf)
+                if details is not None:
+                    matched_details = details
+                    if buffer_name != "payload":
+                        matched_details.insert(0, f"buffer='{buffer_name}'")
+                    break
+            else:
+                return False, None
 
         # Summary of match information
         info_str = f"sid={rule.sid}; msg=\"{rule.msg}\""
